@@ -65,9 +65,12 @@ pub struct UnnecessaryPackageTaskSyntaxError {
     code(root_syntax_in_global_deps),
     url("{}/messages/{}", TURBO_SITE, self.code().unwrap().to_string().to_case(Case::Kebab))
 )]
-#[error("$$ROOT$$ syntax is not allowed in globalDependencies, since globalDependencies is already relative to the root of the Workspace.")]
+#[error(
+    "$TURBO_ROOT$ syntax is not allowed in globalDependencies, since globalDependencies is \
+     already relative to the root of the Workspace."
+)]
 pub struct RootSyntaxInGlobalDepsError {
-    #[label("$$ROOT$$ syntax found here")]
+    #[label("$TURBO_ROOT$ syntax found here")]
     pub span: Option<SourceSpan>,
     #[source_code]
     pub text: NamedSource<String>,

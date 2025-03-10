@@ -88,11 +88,11 @@ impl Display for GlobError {
 }
 
 fn compile_glob(raw: &str) -> Result<Glob<'static>, GlobError> {
-    // Check if the glob starts with the $$ROOT$$ microsyntax
-    let processed_raw = if raw.starts_with("$$ROOT$$") {
-        // Remove the $$ROOT$$ prefix - the glob will be processed relative to the
+    // Check if the glob starts with the $TURBO_ROOT$ microsyntax
+    let processed_raw = if raw.starts_with("$TURBO_ROOT$") {
+        // Remove the $TURBO_ROOT$ prefix - the glob will be processed relative to the
         // workspace root
-        raw.replace("$$ROOT$$", "")
+        raw.replace("$TURBO_ROOT$", "")
     } else {
         raw.to_string()
     };
@@ -117,7 +117,7 @@ impl GlobSet {
             .cloned()
             .map(|raw_glob| {
                 // Check if this glob is anchored to the workspace root
-                if raw_glob.starts_with("$$ROOT$$") {
+                if raw_glob.starts_with("$TURBO_ROOT$") {
                     workspace_root_globs.insert(raw_glob.clone());
                 }
 
@@ -131,7 +131,7 @@ impl GlobSet {
             .iter()
             .map(|raw_glob| {
                 // Check if this glob is anchored to the workspace root
-                if raw_glob.starts_with("$$ROOT$$") {
+                if raw_glob.starts_with("$TURBO_ROOT$") {
                     workspace_root_globs.insert(format!("!{}", raw_glob));
                 }
 

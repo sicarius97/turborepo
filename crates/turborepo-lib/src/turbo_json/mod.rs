@@ -743,13 +743,13 @@ pub fn validate_no_root_syntax_in_global_deps(turbo_json: &TurboJson) -> Vec<Err
     let mut errors = Vec::new();
 
     for dep in &turbo_json.global_deps {
-        if dep.starts_with("$$ROOT$$") {
+        if dep.starts_with("$TURBO_ROOT$") {
             errors.push(Error::RootSyntaxInGlobalDeps(Box::new(
                 RootSyntaxInGlobalDepsError {
                     span: turbo_json.text.as_ref().map(|text| {
-                        // Find the position of the $$ROOT$$ in the text
-                        let pos = text.find("$$ROOT$$").unwrap_or(0);
-                        (pos, pos + 8).into() // 8 is length of "$$ROOT$$"
+                        // Find the position of the $TURBO_ROOT$ in the text
+                        let pos = text.find("$TURBO_ROOT$").unwrap_or(0);
+                        (pos, pos + 12).into() // 12 is length of "$TURBO_ROOT$"
                     }),
                     text: NamedSource::new(
                         turbo_json.path.as_deref().unwrap_or("turbo.json"),
@@ -1222,7 +1222,7 @@ mod tests {
     #[test]
     fn test_validate_no_root_syntax_in_global_deps() {
         let json_with_root = r#"{
-            "globalDependencies": ["$$ROOT$$/some/path"]
+            "globalDependencies": ["$TURBO_ROOT$/some/path"]
         }"#;
 
         let json_without_root = r#"{
