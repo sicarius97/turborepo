@@ -11,6 +11,7 @@ use crate::hash_object::hash_objects;
 use crate::{Error, Git, GitHashes, SCM};
 
 pub const INPUT_INCLUDE_DEFAULT_FILES: &str = "$TURBO_DEFAULT$";
+pub const INPUT_ROOT_RELATIVE: &str = "$TURBO_ROOT$";
 
 impl SCM {
     pub fn get_hashes_for_files(
@@ -42,6 +43,11 @@ impl SCM {
         let include_default_files = inputs
             .iter()
             .any(|input| input.as_ref() == INPUT_INCLUDE_DEFAULT_FILES);
+
+        // Check if any inputs use $TURBO_ROOT$ syntax for root-relative paths
+        let has_root_relative = inputs
+            .iter()
+            .any(|input| input.as_ref() == INPUT_ROOT_RELATIVE);
 
         match self {
             SCM::Manual => {
@@ -120,6 +126,11 @@ impl Git {
         inputs: &[S],
         include_default_files: bool,
     ) -> Result<GitHashes, Error> {
+        // Check if any inputs use $TURBO_ROOT$ syntax for root-relative paths
+        let has_root_relative = inputs
+            .iter()
+            .any(|input| input.as_ref() == INPUT_ROOT_RELATIVE);
+
         // no inputs, and no $TURBO_DEFAULT$
         if inputs.is_empty() {
             return self.get_package_file_hashes_from_index(turbo_root, package_path);
@@ -132,11 +143,17 @@ impl Git {
                 package_path,
                 inputs,
                 true,
+                has_root_relative,
             );
         }
 
         // we have inputs, and $TURBO_DEFAULT$
-        self.get_package_file_hashes_from_inputs_and_index(turbo_root, package_path, inputs)
+        self.get_package_file_hashes_from_inputs_and_index(
+            turbo_root,
+            package_path,
+            inputs,
+            has_root_relative,
+        )
     }
 
     #[tracing::instrument(skip(self, turbo_root))]
@@ -181,6 +198,7 @@ impl Git {
         package_path: &AnchoredSystemPath,
         inputs: &[S],
         include_configs: bool,
+        has_root_relative: bool,
     ) -> Result<GitHashes, Error> {
         let full_pkg_path = turbo_root.resolve(package_path);
         let package_unix_path_buf = package_path.to_unix();
@@ -198,40 +216,35 @@ impl Git {
             // - package.json is an input because if the `scripts` in the package.json
             //   change (i.e. the tasks that turbo executes), we want a cache miss, since
             //   any existing cache could be invalid.
-            // - turbo.json because it's the definition of the tasks themselves. The root
-            //   turbo.json is similarly included in the global hash. This file may not
-            //   exist in the workspace, but that is ok, because it will get ignored
-            //   downstream.
             inputs.push("package.json".to_string());
             inputs.push("turbo.json".to_string());
         }
 
-        // The input patterns are relative to the package.
-        // However, we need to change the globbing to be relative to the repo root.
-        // Prepend the package path to each of the input patterns.
-        //
-        // FIXME: we don't yet error on absolute unix paths being passed in as inputs,
-        // and instead tack them on as if they were relative paths. This should be an
-        // error further upstream, but since we haven't pulled the switch yet,
-        // we need to mimic the Go behavior here and trim leading `/`
-        // characters.
-        let mut inclusions = vec![];
-        let mut exclusions = vec![];
-        for raw_glob in inputs {
-            if let Some(exclusion) = raw_glob.strip_prefix('!') {
-                let glob_str = [package_unix_path, exclusion.trim_start_matches('/')].join("/");
-                exclusions.push(ValidatedGlob::from_str(&glob_str)?);
-            } else {
-                let glob_str = [package_unix_path, raw_glob.trim_start_matches('/')].join("/");
-                inclusions.push(ValidatedGlob::from_str(&glob_str)?);
+        let mut globs = Vec::with_capacity(inputs.len());
+        for input in inputs {
+            if input == INPUT_ROOT_RELATIVE {
+                continue; // Skip the $TURBO_ROOT$ token itself
             }
+            if input == INPUT_INCLUDE_DEFAULT_FILES {
+                continue; // Skip the $TURBO_DEFAULT$ token itself
+            }
+
+            let glob_str = if has_root_relative && !input.starts_with('!') {
+                // For root-relative paths, don't prepend package path
+                input
+            } else {
+                // For package-relative paths, prepend package path
+                if package_unix_path.is_empty() {
+                    input
+                } else {
+                    format!("{}/{}", package_unix_path, input)
+                }
+            };
+
+            let glob = ValidatedGlob::from_str(&glob_str)?;
+            globs.push(glob);
         }
-        let files = globwalk::globwalk(
-            turbo_root,
-            &inclusions,
-            &exclusions,
-            globwalk::WalkType::Files,
-        )?;
+        let files = globwalk::globwalk(turbo_root, &globs, &[], globwalk::WalkType::Files)?;
         let to_hash = files
             .iter()
             .map(|entry| {
@@ -250,6 +263,7 @@ impl Git {
         turbo_root: &AbsoluteSystemPath,
         package_path: &AnchoredSystemPath,
         inputs: &[S],
+        has_root_relative: bool,
     ) -> Result<GitHashes, Error> {
         // collect the default files and the inputs
         let default_file_hashes =
@@ -269,12 +283,23 @@ impl Git {
         }
         // we have to always run the includes search because we add default files to the
         // includes
-        let manual_includes_hashes =
-            self.get_package_file_hashes_from_inputs(turbo_root, package_path, &includes, true)?;
+        let manual_includes_hashes = self.get_package_file_hashes_from_inputs(
+            turbo_root,
+            package_path,
+            &includes,
+            true,
+            has_root_relative,
+        )?;
 
         // only run the excludes search if there are excludes
         let manual_excludes_hashes = if !excludes.is_empty() {
-            self.get_package_file_hashes_from_inputs(turbo_root, package_path, &excludes, false)?
+            self.get_package_file_hashes_from_inputs(
+                turbo_root,
+                package_path,
+                &excludes,
+                false,
+                has_root_relative,
+            )?
         } else {
             GitHashes::new()
         };
@@ -613,6 +638,82 @@ mod tests {
                 .unwrap();
             assert_eq!(hashes, expected);
         }
+        Ok(())
+    }
+
+    #[test]
+    fn test_root_relative_paths() -> Result<(), Error> {
+        let (tmp_dir, repo_root) = tmp_dir();
+        setup_repository(&repo_root);
+
+        // Create a package with some files
+        let my_pkg_dir = repo_root.join_component("my-pkg");
+        my_pkg_dir.create_dir_all()?;
+
+        // Create a file in the package
+        let pkg_file_path = my_pkg_dir.join_component("pkg-file.txt");
+        pkg_file_path.create_with_contents("package file")?;
+
+        // Create a file in the root
+        let root_file_path = repo_root.join_component("root-file.txt");
+        root_file_path.create_with_contents("root file")?;
+
+        commit_all(&repo_root);
+
+        let git = Git::new(&repo_root)?;
+        let pkg_path = AnchoredSystemPath::new("my-pkg")?;
+
+        // Test with $TURBO_ROOT$ and root-relative path
+        let hashes = git.get_package_file_hashes(
+            &repo_root,
+            pkg_path,
+            &["$TURBO_ROOT$", "root-file.txt"],
+            false,
+        )?;
+
+        assert!(
+            hashes.contains_key("root-file.txt"),
+            "Should include root file"
+        );
+        assert!(
+            !hashes.contains_key("my-pkg/pkg-file.txt"),
+            "Should not include package file"
+        );
+
+        // Test with $TURBO_ROOT$ and package-relative path
+        let hashes = git.get_package_file_hashes(
+            &repo_root,
+            pkg_path,
+            &["$TURBO_ROOT$", "pkg-file.txt"],
+            false,
+        )?;
+
+        assert!(
+            hashes.contains_key("my-pkg/pkg-file.txt"),
+            "Should include package file"
+        );
+        assert!(
+            !hashes.contains_key("root-file.txt"),
+            "Should not include root file"
+        );
+
+        // Test with $TURBO_ROOT$ and both root and package paths
+        let hashes = git.get_package_file_hashes(
+            &repo_root,
+            pkg_path,
+            &["$TURBO_ROOT$", "root-file.txt", "pkg-file.txt"],
+            false,
+        )?;
+
+        assert!(
+            hashes.contains_key("root-file.txt"),
+            "Should include root file"
+        );
+        assert!(
+            hashes.contains_key("my-pkg/pkg-file.txt"),
+            "Should include package file"
+        );
+
         Ok(())
     }
 
