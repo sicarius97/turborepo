@@ -1,0 +1,11 @@
+{
+  "name": "turbo_root_global_deps_error",
+  "version": "1.0.0",
+  "private": true,
+  "workspaces": [
+    "packages/*"
+  ],
+  "scripts": {
+    "build": "echo 'build'"
+  }
+}

@@ -1,0 +1,9 @@
+{
+  "$schema": "https://turbo.build/schema.json",
+  "globalDependencies": ["$TURBO_ROOT$/some/path"],
+  "pipeline": {
+    "build": {
+      "outputs": []
+    }
+  }
+}

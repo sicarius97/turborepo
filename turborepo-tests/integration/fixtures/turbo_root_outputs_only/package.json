@@ -1,0 +1,11 @@
+{
+  "name": "turbo_root_outputs_only",
+  "version": "1.0.0",
+  "private": true,
+  "workspaces": [
+    "packages/*"
+  ],
+  "scripts": {
+    "build": "echo 'root output' > root-output.js"
+  }
+}
