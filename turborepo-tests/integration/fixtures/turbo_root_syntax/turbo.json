@@ -1,0 +1,14 @@
+{
+  "$schema": "https://turbo.build/schema.json",
+  "globalDependencies": ["$TURBO_ROOT$/some/path"],
+  "tasks": {
+    "build": {
+      "outputs": ["dist/**"],
+      "inputs": ["$TURBO_ROOT$/shared/**"]
+    },
+    "test": {
+      "outputs": ["coverage/**"],
+      "inputs": ["$TURBO_ROOT$/test-utils/**"]
+    }
+  }
+}

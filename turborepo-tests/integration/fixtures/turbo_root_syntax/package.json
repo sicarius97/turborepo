@@ -1,0 +1,12 @@
+{
+  "name": "turbo-root-syntax-test",
+  "version": "1.0.0",
+  "private": true,
+  "workspaces": [
+    "packages/*"
+  ],
+  "scripts": {
+    "build": "echo \"building root\"",
+    "test": "echo \"testing root\""
+  }
+}
