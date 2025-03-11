@@ -2,9 +2,7 @@ use std::{
     collections::{BTreeSet, HashMap, HashSet},
     fmt::Display,
     future::IntoFuture,
-    path::Path,
     str::FromStr,
-    sync::Arc,
     time::Duration,
 };
 
@@ -517,7 +515,7 @@ impl GlobTracker {
 #[cfg(test)]
 mod test {
     use std::{
-        collections::{HashMap, HashSet},
+        collections::{BTreeSet, HashMap, HashSet},
         str::FromStr,
         time::Duration,
     };

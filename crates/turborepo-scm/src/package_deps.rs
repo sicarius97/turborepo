@@ -44,11 +44,6 @@ impl SCM {
             .iter()
             .any(|input| input.as_ref() == INPUT_INCLUDE_DEFAULT_FILES);
 
-        // Check if any inputs use $TURBO_ROOT$ syntax for root-relative paths
-        let has_root_relative = inputs
-            .iter()
-            .any(|input| input.as_ref() == INPUT_ROOT_RELATIVE);
-
         match self {
             SCM::Manual => {
                 if let Some(telemetry) = telemetry {
