@@ -21,8 +21,7 @@ Running build for my-app succeeds
     Time:\s*[\.0-9]+m?s  (re)
   
    WARNING  no output files found for task my-app#build. Please check your `outputs` key in `turbo.json`
-Update excluded file and try again
-
+Update exluded file and try again
   $ echo "new excluded value" > apps/my-app/excluded.txt
   $ ${TURBO} run build --filter=my-app
   \xe2\x80\xa2 Packages in scope: my-app (esc)
